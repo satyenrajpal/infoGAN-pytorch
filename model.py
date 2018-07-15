@@ -32,11 +32,12 @@ class D(nn.Module):
       nn.Conv2d(1024, 1, 1),
       nn.Sigmoid()
     )
-    
+    self.cls = nn.Conv2d(1024,10,1)
 
   def forward(self, x):
     output = self.main(x).view(-1, 1)
-    return output
+    logits = self.cls(x).view(-1,10)
+    return output, logits
 
 
 class Q(nn.Module):
@@ -55,13 +56,13 @@ class Q(nn.Module):
 
     y = self.conv(x)
 
-    disc_logits = self.conv_disc(y).squeeze()
+    # disc_logits = self.conv_disc(y).squeeze()
 
     mu = self.conv_mu(y).squeeze()
     var = self.conv_var(y).squeeze().exp()
 
-    return disc_logits, mu, var 
-
+    # return disc_logits, mu, var 
+    return mu, var
 
 class G(nn.Module):
 

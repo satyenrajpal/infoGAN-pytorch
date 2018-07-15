@@ -113,52 +113,69 @@ class Trainer:
         con_c.data.resize_(bs, 2)
         # noise.data.resize_(bs, 62)
         
+        # Random conditioned 'z' 
+        z, idx = self._make_conditions(labels_x,con_c,bs)        
+        class_ = torch.LongTensor(idx).to(self.device)
+        target = Variable(class_)
+
+        # Real part
         real_x.data.copy_(x)
         fe_out1 = self.FE(real_x)
-        probs_real = self.D(fe_out1)
+        # print("FE output", fe_out1.size())
+        probs_real, out_cls = self.D(fe_out1)
         rf_label.data.fill_(1)
+        
+        # GAN loss
         loss_real = criterionD(probs_real, rf_label)
-        loss_real.backward()
+        loss_real.backward(retain_graph=True)
 
+        # Classification loss
+        loss_class = criterionQ_dis(out_cls,class_)
+        loss_class.backward()
+        
         # fake part
         # z, idx = self._noise_sample(dis_c, con_c, noise, bs)
-        z, idx = self._make_conditions(labels_x,con_c,bs)
         fake_x = self.G(z)
         fe_out2 = self.FE(fake_x.detach())
-        probs_fake = self.D(fe_out2)
+        probs_fake,_ = self.D(fe_out2)
         rf_label.data.fill_(0)
         loss_fake = criterionD(probs_fake, rf_label)
         loss_fake.backward()
 
-        D_loss = loss_real + loss_fake
+        D_loss = loss_real + loss_fake + loss_class
 
         optimD.step()
         
         # G and Q part
         optimG.zero_grad()
 
+        #PASS z THROUGH G AGAIN!?
+        # x_fake = self.G(z)
         fe_out = self.FE(fake_x)
-        probs_fake = self.D(fe_out)
+        probs_fake, out_cls = self.D(fe_out)
         rf_label.data.fill_(1.0)
-
+        
+        # GAN loss
         reconstruct_loss = criterionD(probs_fake, rf_label)
         
-        q_logits, q_mu, q_var = self.Q(fe_out)
-        class_ = torch.LongTensor(idx).to(self.device)
-        target = Variable(class_)
-        dis_loss = criterionQ_dis(q_logits, target)
+        #Classification loss
+        g_loss_cls = criterionQ_dis(out_cls,class_)
+
+        q_mu, q_var = self.Q(fe_out)
+        # dis_loss = criterionQ_dis(q_logits, target)
         con_loss = criterionQ_con(con_c, q_mu, q_var)*0.1
         
-        G_loss = reconstruct_loss + dis_loss + con_loss
+        G_loss = reconstruct_loss + g_loss_cls + con_loss
         G_loss.backward()
         optimG.step()
 
         if num_iters % 100 == 0:
 
-          print('Epoch/Iter:{0}/{1}, Dloss: {2}, Gloss: {3}, Classification Loss: {4}'.format(
+          print('Epoch/Iter:{0}/{1}, Dloss: {2}, Gloss: {3}, Classification Loss: {4}, Gaussian Loss: {5}'.format(
             epoch, num_iters, D_loss.data.cpu().numpy(),
             G_loss.data.cpu().numpy(),
-            reconstruct_loss.data.cpu().numpy()))
+            reconstruct_loss.data.cpu().numpy(),
+            con_loss.data.cpu().numpy()))
 
           # noise.data.copy_(fix_noise)
           labels_x.data.copy_(torch.Tensor(one_hot))

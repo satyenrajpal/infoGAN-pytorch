@@ -155,10 +155,10 @@ class Trainer:
 
         if num_iters % 100 == 0:
 
-          print('Epoch/Iter:{0}/{1}, Dloss: {2}, Gloss: {3}'.format(
+          print('Epoch/Iter:{0}/{1}, Dloss: {2}, Gloss: {3}, Classification Loss: {4}'.format(
             epoch, num_iters, D_loss.data.cpu().numpy(),
-            G_loss.data.cpu().numpy())
-          )
+            G_loss.data.cpu().numpy(),
+            reconstruct_loss.data.cpu().numpy()))
 
           # noise.data.copy_(fix_noise)
           labels_x.data.copy_(torch.Tensor(one_hot))

@@ -55,17 +55,17 @@ class Trainer:
 
     z = torch.cat([labels_x,con_c],dim=1).view(bs,-1,1,1)
 
-    return z,idx
+    return z, idx
 
   def train(self):
 
     if not os.path.exists(os.path.join(os.getcwd(),'samples')):
         os.makedirs('samples')
 
-    real_x = torch.FloatTensor(self.batch_size, 1, 28, 28).to(self.device)
+    real_x   = torch.FloatTensor(self.batch_size, 1, 28, 28).to(self.device)
     rf_label = torch.FloatTensor(self.batch_size).to(self.device)
     labels_x = torch.FloatTensor(self.batch_size, 10).to(self.device)
-    con_c = torch.FloatTensor(self.batch_size, 2).to(self.device)
+    con_c    = torch.FloatTensor(self.batch_size, 2).to(self.device)
     # noise = torch.FloatTensor(self.batch_size, 62).to(self.device)
 
     real_x = Variable(real_x)
@@ -81,10 +81,11 @@ class Trainer:
     criterionQ_dis = nn.CrossEntropyLoss().to(self.device)
     criterionQ_con = log_gaussian()
 
-    optimD = optim.Adam([{'params':self.FE.parameters()}, {'params':self.D.parameters()}], lr=0.0002, betas=(0.5, 0.99))
-    optimG = optim.Adam([{'params':self.G.parameters()}, {'params':self.Q.parameters()}], lr=0.001, betas=(0.5, 0.99))
-
-
+    # optimD = optim.Adam([{'params':self.FE.parameters()}, {'params':self.D.parameters()}], lr=0.0002, betas=(0.5, 0.99))
+    # optimG = optim.Adam([{'params':self.G.parameters()}, {'params':self.Q.parameters()}], lr=0.001, betas=(0.5, 0.99))
+    optimD = optim.Adam(self.D.parameters(),lr = 0.0002, betas = (0.5, 0.999))
+    optimG = optim.Adam(self.G.parameters(),lr = 0.0002, betas = (0.5, 0.999))
+    
     # fixed random variables for testing
     c = np.linspace(-1, 1, 10).reshape(1, -1)
     c = np.repeat(c, 10, 0).reshape(-1, 1)
@@ -96,7 +97,6 @@ class Trainer:
     one_hot = np.zeros((100, 10))
     one_hot[range(100), idx] = 1
     # fix_noise = torch.Tensor(100, 62).uniform_(-1, 1)
-
 
     for epoch in range(100):
       for num_iters, batch_data in enumerate(dataloader, 0):
@@ -120,9 +120,8 @@ class Trainer:
 
         # Real part
         real_x.data.copy_(x)
-        fe_out1 = self.FE(real_x)
-        # print("FE output", fe_out1.size())
-        probs_real, out_cls = self.D(fe_out1)
+        # fe_out1 = self.FE(real_x)
+        probs_real, out_cls, _, _ = self.D(real_x)
         rf_label.data.fill_(1)
         
         # GAN loss
@@ -136,13 +135,13 @@ class Trainer:
         # fake part
         # z, idx = self._noise_sample(dis_c, con_c, noise, bs)
         fake_x = self.G(z)
-        fe_out2 = self.FE(fake_x.detach())
-        probs_fake,_ = self.D(fe_out2)
+        # fe_out2 = self.FE(fake_x.detach())
+        probs_fake,_, _, _ = self.D(fake_x.detach())
         rf_label.data.fill_(0)
         loss_fake = criterionD(probs_fake, rf_label)
         loss_fake.backward()
 
-        D_loss = loss_real + loss_fake + loss_class
+        D_loss = loss_real + loss_fake + 5*loss_class
 
         optimD.step()
         
@@ -151,8 +150,8 @@ class Trainer:
 
         #PASS z THROUGH G AGAIN!?
         # x_fake = self.G(z)
-        fe_out = self.FE(fake_x)
-        probs_fake, out_cls = self.D(fe_out)
+        # fe_out = self.FE(fake_x)
+        probs_fake, out_cls, q_mu, q_var = self.D(fake_x)
         rf_label.data.fill_(1.0)
         
         # GAN loss
@@ -161,11 +160,11 @@ class Trainer:
         #Classification loss
         g_loss_cls = criterionQ_dis(out_cls,class_)
 
-        q_mu, q_var = self.Q(fe_out)
+        # q_mu, q_var = self.Q(fe_out)
         # dis_loss = criterionQ_dis(q_logits, target)
         con_loss = criterionQ_con(con_c, q_mu, q_var)*0.1
         
-        G_loss = reconstruct_loss + g_loss_cls + con_loss
+        G_loss = reconstruct_loss + 5*g_loss_cls + con_loss
         G_loss.backward()
         optimG.step()
 

@@ -83,8 +83,8 @@ class Trainer:
 
     # optimD = optim.Adam([{'params':self.FE.parameters()}, {'params':self.D.parameters()}], lr=0.0002, betas=(0.5, 0.99))
     # optimG = optim.Adam([{'params':self.G.parameters()}, {'params':self.Q.parameters()}], lr=0.001, betas=(0.5, 0.99))
-    optimD = optim.Adam(self.D.parameters(),lr = 0.0002, betas = (0.5, 0.999))
-    optimG = optim.Adam(self.G.parameters(),lr = 0.0002, betas = (0.5, 0.999))
+    optimD = optim.Adam([{'params':self.FE.parameters()}, {'params':self.D.parameters()}],lr = 0.0002, betas = (0.5, 0.99))
+    optimG = optim.Adam(self.G.parameters(),lr = 0.0001, betas = (0.5, 0.99))
     
     # fixed random variables for testing
     c = np.linspace(-1, 1, 10).reshape(1, -1)
@@ -120,8 +120,8 @@ class Trainer:
 
         # Real part
         real_x.data.copy_(x)
-        # fe_out1 = self.FE(real_x)
-        probs_real, out_cls, _, _ = self.D(real_x)
+        fe_out1 = self.FE(real_x)
+        probs_real, out_cls, _, _ = self.D(fe_out1)
         rf_label.data.fill_(1)
         
         # GAN loss
@@ -135,8 +135,8 @@ class Trainer:
         # fake part
         # z, idx = self._noise_sample(dis_c, con_c, noise, bs)
         fake_x = self.G(z)
-        # fe_out2 = self.FE(fake_x.detach())
-        probs_fake,_, _, _ = self.D(fake_x.detach())
+        fe_out2 = self.FE(fake_x.detach())
+        probs_fake,_, _, _ = self.D(fe_out2)
         rf_label.data.fill_(0)
         loss_fake = criterionD(probs_fake, rf_label)
         loss_fake.backward()
@@ -150,8 +150,8 @@ class Trainer:
 
         #PASS z THROUGH G AGAIN!?
         # x_fake = self.G(z)
-        # fe_out = self.FE(fake_x)
-        probs_fake, out_cls, q_mu, q_var = self.D(fake_x)
+        fe_out = self.FE(fake_x)
+        probs_fake, out_cls, q_mu, q_var = self.D(fe_out)
         rf_label.data.fill_(1.0)
         
         # GAN loss

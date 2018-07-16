@@ -3,7 +3,7 @@ from trainer import Trainer
 import torch
 
 fe = FrontEnd()
-d = TotalD()
+d = D()
 q = Q()
 g = G()
 

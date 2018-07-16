@@ -32,12 +32,20 @@ class D(nn.Module):
       nn.Conv2d(1024, 1, 1),
       nn.Sigmoid()
     )
+    self.conv = nn.Conv2d(1024, 128, 1, bias=False)
+    self.conv_mu = nn.Conv2d(128, 2, 1)
+    self.conv_var = nn.Conv2d(128, 2, 1)
+
     self.cls = nn.Conv2d(1024,10,1)
 
   def forward(self, x):
     output = self.main(x).view(-1, 1)
     logits = self.cls(x).view(-1,10)
-    return output, logits
+    y = self.conv(x)
+    mu = self.conv_mu(y).squeeze()
+    var = self.conv_var(y).squeeze().exp()
+
+    return output, logits, mu, var
 
 
 class Q(nn.Module):
@@ -79,7 +87,7 @@ class TotalD(nn.Module):
       nn.BatchNorm2d(1024),
       nn.LeakyReLU(0.1, inplace=True)
       )
-
+    # REAL?
     self.real = nn.Sequential(
       nn.Conv2d(1024, 1, 1),
       nn.Sigmoid())
@@ -97,6 +105,8 @@ class TotalD(nn.Module):
     
     h = self.main(x)
     real = self.real(h).view(-1,1)
+    
+    # Q parameters
     fe = self.FE(h)
     disc_logits = self.disc(fe).view(-1,10)
     mu = self.mu(fe).squeeze()

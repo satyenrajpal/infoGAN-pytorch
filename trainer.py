@@ -133,7 +133,6 @@ class Trainer:
             loss_class.backward()
             
             # fake part
-            # z, idx = self._noise_sample(dis_c, con_c, noise, bs)
             fake_x = self.G(cond)
             fe_out2 = self.FE(fake_x.detach())
             probs_fake, _ = self.D(fe_out2)
@@ -148,7 +147,6 @@ class Trainer:
             # G and Q part
             optimG.zero_grad()
 
-            #PASS z THROUGH G AGAIN!?
             x_fake = self.G(cond)
             fe_out = self.FE(fake_x)
             probs_fake, out_cls = self.D(fe_out)

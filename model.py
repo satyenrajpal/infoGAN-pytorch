@@ -63,7 +63,7 @@ class Q(nn.Module):
   def forward(self, x):
 
     y = self.conv(x)
-    y = self.lReLU(self.bn(y))
+    # y = self.lReLU(self.bn(y))
     # disc_logits = self.conv_disc(y).squeeze()
 
     mu = self.conv_mu(y).squeeze()

@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-
+ 
 class FrontEnd(nn.Module):
   ''' front end part of discriminator and Q'''
 
@@ -25,7 +25,7 @@ class FrontEnd(nn.Module):
 
 class D(nn.Module):
 
-  def __init__(self):
+  def __init__(self,classes=10):
     super(D, self).__init__()
     
     self.main = nn.Sequential(
@@ -33,44 +33,44 @@ class D(nn.Module):
       nn.Sigmoid()
     )
     self.conv = nn.Conv2d(1024, 128, 1, bias=False)
-    self.conv_mu = nn.Conv2d(128, 2, 1)
-    self.conv_var = nn.Conv2d(128, 2, 1)
+    # self.conv_mu = nn.Conv2d(128, 2, 1)
+    # self.conv_var = nn.Conv2d(128, 2, 1)
 
-    self.cls = nn.Conv2d(1024,10,1)
+    self.cls = nn.Conv2d(1024,classes,1)
 
   def forward(self, x):
     output = self.main(x).view(-1, 1)
     logits = self.cls(x).view(-1,10)
-    y = self.conv(x)
-    mu = self.conv_mu(y).squeeze()
-    var = self.conv_var(y).squeeze().exp()
+    # y = self.conv(x)
+    # mu = self.conv_mu(y).squeeze()
+    # var = self.conv_var(y).squeeze().exp()
 
-    return output, logits, mu, var
+    return output, logits
 
 
 class Q(nn.Module):
 
-  def __init__(self):
+  def __init__(self,output_c=2):
     super(Q, self).__init__()
 
     self.conv = nn.Conv2d(1024, 128, 1, bias=False)
     self.bn = nn.BatchNorm2d(128)
     self.lReLU = nn.LeakyReLU(0.1, inplace=True)
     self.conv_disc = nn.Conv2d(128, 10, 1)
-    self.conv_mu = nn.Conv2d(128, 2, 1)
-    self.conv_var = nn.Conv2d(128, 2, 1)
+    self.conv_mu = nn.Conv2d(128, output_c, 1)
+    self.conv_var = nn.Conv2d(128, output_c, 1)
 
   def forward(self, x):
 
     y = self.conv(x)
-
-    disc_logits = self.conv_disc(y).squeeze()
+    y = self.lReLU(self.bn(y))
+    # disc_logits = self.conv_disc(y).squeeze()
 
     mu = self.conv_mu(y).squeeze()
     var = self.conv_var(y).squeeze().exp()
 
-    return disc_logits, mu, var 
-    # return mu, var
+    # return disc_logits, mu, var 
+    return mu, var
 
 class TotalD(nn.Module):
   
@@ -116,11 +116,12 @@ class TotalD(nn.Module):
 
 class G(nn.Module):
 
-  def __init__(self):
+  def __init__(self,input_=12):
     super(G, self).__init__()
+    # Change Batch Norm to Instance Norm!
 
     self.main = nn.Sequential(
-      nn.ConvTranspose2d(12, 1024, 1, 1, bias=False),
+      nn.ConvTranspose2d(input_, 1024, 1, 1, bias=False),
       nn.BatchNorm2d(1024),
       nn.ReLU(True),
       nn.ConvTranspose2d(1024, 128, 7, 1, bias=False),
@@ -135,6 +136,8 @@ class G(nn.Module):
 
   def forward(self, x):
     output = self.main(x)
+
+    
     return output
 
 def weights_init(m):

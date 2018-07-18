@@ -2,6 +2,11 @@ from model import *
 from trainer import Trainer
 import torch
 
+# TODO:
+#  - Replace BatchNorm with Instance Norm
+#  - L2 loss instead of factored Gaussian!?
+#  - Reolicate DC GAN architecture
+
 fe = FrontEnd()
 d = D()
 q = Q()

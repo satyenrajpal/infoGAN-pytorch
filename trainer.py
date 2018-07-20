@@ -47,10 +47,10 @@ class Trainer:
 
         return z, idx
 
-    def _make_conditions(self,labels,x_labels,con_c,bs):
+    def _make_conditions(self,labels,x_label,con_c,bs):
 
         c = np.zeros((bs, 10))
-        c[range(bs),x_labels] = 1.0
+        c[range(bs),x_label] = 1.0
         labels.data.copy_(torch.Tensor(c))
         con_c.data.uniform_(-1.0,1.0)
         z = torch.cat([labels,con_c],dim=1).view(bs,-1,1,1)
@@ -66,14 +66,7 @@ class Trainer:
         rf_label = torch.FloatTensor(self.batch_size).to(self.device)
         labels   = torch.FloatTensor(self.batch_size, self.num_d).requires_grad_().to(self.device)
         con_c    = torch.FloatTensor(self.batch_size, self.num_c).requires_grad_().to(self.device)
-        # noise = torch.FloatTensor(self.batch_size, 62).to(self.device)
-
-        # real_x = Variable(real_x)
-        # rf_label = Variable(rf_label, requires_grad=False)
-        # labels = Variable(labels)
-        # con_c = Variable(con_c)
-        # # noise = Variable(noise)
-
+        
         dataset = dset.MNIST('./dataset', transform=transforms.ToTensor(),download=True)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, num_workers=4)
 
@@ -183,7 +176,4 @@ class Trainer:
                 x_save = self.G(z)
                 save_image(x_save.data, 'samples/{}-{}-c{}.png'.format(epoch,num_iters,i), nrow=10)
 
-              # con_c.data.copy_(torch.from_numpy(c2))
-              # z = torch.cat([labels_x, con_c], 1).view(bs, -1 , 1, 1)
-              # x_save = self.G(z)
-              # save_image(x_save.data, 'samples/{}-{}-c2.png'.format(epoch,num_iters), nrow=10)
+              

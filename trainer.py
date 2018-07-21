@@ -150,7 +150,7 @@ class Trainer:
             loss_fake = torch.mean(out_fake)
             loss_fake.backward()
 
-            alpha = torch.rand(x.size(0), 1, 1, 1).to(self.device)
+            alpha = torch.rand(real_x.size(0), 1, 1, 1).to(self.device)
             x_hat = (alpha * real_x.data + (1 - alpha) * real_x.data).requires_grad_(True)
             out_src, _ = self.D(x_hat)
             d_loss_gp = self.gradient_penalty(out_src, x_hat)

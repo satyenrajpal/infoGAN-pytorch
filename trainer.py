@@ -135,11 +135,9 @@ class Trainer:
             # GAN loss
             # loss_real = criterionD(probs_real, rf_label)
             loss_real = -torch.mean(out_real)
-            loss_real.backward(retain_graph=True)
-
+            
             # Classification loss
             loss_class = criterionQ_dis(out_cls,x_label)
-            loss_class.backward()
             
             # fake part
             fake_x = self.G(cond)
@@ -148,15 +146,14 @@ class Trainer:
             # rf_label.data.fill_(0)
             # loss_fake = criterionD(probs_fake, rf_label)
             loss_fake = torch.mean(out_fake)
-            loss_fake.backward()
-
+            
             alpha = torch.rand(real_x.size(0), 1, 1, 1).to(self.device)
             x_hat = (alpha * real_x.data + (1 - alpha) * real_x.data).requires_grad_(True)
             out_src, _ = self.D(self.FE(x_hat))
             d_loss_gp = self.gradient_penalty(out_src, x_hat)
 
             D_loss = loss_real + loss_fake + loss_class + 5*d_loss_gp
-
+            D_loss.backward()
             optimD.step()
 
             # G and Q part

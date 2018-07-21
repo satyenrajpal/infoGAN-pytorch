@@ -28,10 +28,8 @@ class D(nn.Module):
   def __init__(self,classes=10):
     super(D, self).__init__()
     
-    self.main = nn.Sequential(
-      nn.Conv2d(1024, 1, 1),
-      nn.Sigmoid()
-    )
+    self.main = nn.Conv2d(1024, 1, 1)
+
     self.conv = nn.Conv2d(1024, 128, 1, bias=False)
     # self.conv_mu = nn.Conv2d(128, 2, 1)
     # self.conv_var = nn.Conv2d(128, 2, 1)
@@ -71,48 +69,6 @@ class Q(nn.Module):
 
     # return disc_logits, mu, var 
     return mu, var
-
-class TotalD(nn.Module):
-  
-  def __init__(self):
-    super(TotalD,self).__init__()
-
-    self.main = nn.Sequential(
-      nn.Conv2d(1, 64, 4, 2, 1),
-      nn.LeakyReLU(0.1, inplace=True),
-      nn.Conv2d(64, 128, 4, 2, 1, bias=False),
-      nn.BatchNorm2d(128),
-      nn.LeakyReLU(0.1, inplace=True),
-      nn.Conv2d(128, 1024, 7, bias=False),
-      nn.BatchNorm2d(1024),
-      nn.LeakyReLU(0.1, inplace=True)
-      )
-    # REAL?
-    self.real = nn.Sequential(
-      nn.Conv2d(1024, 1, 1),
-      nn.Sigmoid())
-
-    self.FE = nn.Sequential(
-      nn.Conv2d(1024, 128, 1, bias = False),
-      nn.BatchNorm2d(128),
-      nn.LeakyReLU(0.1))
-
-    self.disc = nn.Conv2d(128, 10, 1)
-    self.mu   = nn.Conv2d(128, 2, 1)
-    self.var  = nn.Conv2d(128, 2, 1)
-
-  def forward(self,x):
-    
-    h = self.main(x)
-    real = self.real(h).view(-1,1)
-    
-    # Q parameters
-    fe = self.FE(h)
-    disc_logits = self.disc(fe).view(-1,10)
-    mu = self.mu(fe).squeeze()
-    var = self.var(fe).squeeze().exp()
-
-    return real, disc_logits, mu, var
 
 class G(nn.Module):
 

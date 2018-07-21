@@ -33,6 +33,7 @@ class Trainer:
         self.batch_size = 100
         self.num_c = num_c
         self.num_d = num_d
+        self.n_critic = 1
 
     def _noise_sample(self, dis_c, con_c, noise, bs):
 
@@ -56,6 +57,20 @@ class Trainer:
         z = torch.cat([labels,con_c],dim=1).view(bs,-1,1,1)
 
         return z
+
+    def gradient_penalty(self, y, x):
+        """Compute gradient penalty: (L2_norm(dy/dx) - 1)**2."""
+        weight = torch.ones(y.size()).to(self.device)
+        dydx = torch.autograd.grad(outputs=y,
+                                   inputs=x,
+                                   grad_outputs=weight,
+                                   retain_graph=True,
+                                   create_graph=True,
+                                   only_inputs=True)[0]
+
+        dydx = dydx.view(dydx.size(0), -1)
+        dydx_l2norm = torch.sqrt(torch.sum(dydx**2, dim=1))
+        return torch.mean((dydx_l2norm-1)**2)
 
     def train(self):
 
@@ -114,11 +129,12 @@ class Trainer:
             # Real part
             real_x.data.copy_(x)
             fe_out1 = self.FE(real_x)
-            probs_real, out_cls = self.D(fe_out1)
-            rf_label.data.fill_(1.0)
+            out_real, out_cls = self.D(fe_out1)
+            # rf_label.data.fill_(1.0)
 
             # GAN loss
-            loss_real = criterionD(probs_real, rf_label)
+            # loss_real = criterionD(probs_real, rf_label)
+            loss_real = -torch.mean(out_real)
             loss_real.backward(retain_graph=True)
 
             # Classification loss
@@ -128,36 +144,43 @@ class Trainer:
             # fake part
             fake_x = self.G(cond)
             fe_out2 = self.FE(fake_x.detach())
-            probs_fake, _ = self.D(fe_out2)
-            rf_label.data.fill_(0)
-            loss_fake = criterionD(probs_fake, rf_label)
+            out_fake, _ = self.D(fe_out2)
+            # rf_label.data.fill_(0)
+            # loss_fake = criterionD(probs_fake, rf_label)
+            loss_fake = torch.mean(out_fake)
             loss_fake.backward()
 
-            D_loss = loss_real + loss_fake + loss_class
+            alpha = torch.rand(x.size(0), 1, 1, 1).to(self.device)
+            x_hat = (alpha * x.data + (1 - alpha) * x.data).requires_grad_(True)
+            out_src, _ = self.D(x_hat)
+            d_loss_gp = self.gradient_penalty(out_src, x_hat)
+
+            D_loss = loss_real + loss_fake + loss_class + 5*d_loss_gp
 
             optimD.step()
 
             # G and Q part
-            optimG.zero_grad()
+            if (num_iters+1) % self.n_critic ==0:
+                optimG.zero_grad()
 
-            x_fake = self.G(cond)
-            fe_out = self.FE(fake_x)
-            probs_fake, out_cls = self.D(fe_out)
-            rf_label.data.fill_(1.0)
-            
-            # GAN loss
-            reconstruct_loss = criterionD(probs_fake, rf_label)
-            
-            #Classification loss
-            g_loss_cls = criterionQ_dis(out_cls,x_label)
+                x_fake = self.G(cond)
+                fe_out = self.FE(fake_x)
+                out_fake, out_cls = self.D(fe_out)
+                # rf_label.data.fill_(1.0)
+                
+                # WGAN loss
+                fake_loss = -torch.mean(out_fake)
+                
+                #Classification loss
+                g_loss_cls = criterionQ_dis(out_cls,x_label)
 
-            q_mu, q_var = self.Q(fe_out)
-            # dis_loss = criterionQ_dis(q_logits, target)
-            con_loss = criterionQ_con(con_c, q_mu, q_var)
-            
-            G_loss = reconstruct_loss + g_loss_cls + con_loss
-            G_loss.backward()
-            optimG.step()
+                q_mu, q_var = self.Q(fe_out)
+                # dis_loss = criterionQ_dis(q_logits, target)
+                con_loss = criterionQ_con(con_c, q_mu, q_var)
+                
+                G_loss = fake_loss + g_loss_cls + con_loss
+                G_loss.backward()
+                optimG.step()
 
             if num_iters % 100 == 0:
 

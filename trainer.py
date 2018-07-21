@@ -187,7 +187,7 @@ class Trainer:
               print('Epoch/Iter:{0}/{1}, Dloss: {2}, Gloss: {3}, Classification Loss: {4}, Gaussian Loss: {5}'.format(
                 epoch, num_iters, D_loss.data.cpu().numpy(),
                 G_loss.data.cpu().numpy(),
-                reconstruct_loss.data.cpu().numpy(),
+                loss_class.data.cpu().numpy(),
                 con_loss.data.cpu().numpy()))
 
               # noise.data.copy_(fix_noise)

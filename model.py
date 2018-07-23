@@ -85,7 +85,7 @@ class G(nn.Module):
       curr_dim = curr_dim//2
 
     layers.append(nn.ConvTranspose2d(curr_dim, output_c, 4, 2, 1, bias=False))
-    layers.append(nn.Sigmoid())
+    layers.append(nn.Tanh())
     
     self.generate = nn.Sequential(*layers)
     self.image_size = image_size

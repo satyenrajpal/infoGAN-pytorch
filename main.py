@@ -35,7 +35,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # Model configuration.
-    parser.add_argument('--dataset', type=str,default='MNIST',help='Which dataset to train/test model',choices=['MNIST'])
+    parser.add_argument('--dataset', type=str,default='MNIST',help='Which dataset to train/test model',choices=['MNIST','RafD'])
     parser.add_argument('--num_d', type=int, default=10, help='number of domain labels')
     parser.add_argument('--num_c', type=int, default=2, help='number of continuous dimensions')
     parser.add_argument('--dim_z', type=int, default=30, help='dimension of noise vector')

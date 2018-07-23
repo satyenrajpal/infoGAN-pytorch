@@ -31,7 +31,7 @@ class Trainer:
         self.num_d = config.num_d
         self.num_c = config.num_c
         self.dim_z = config.dim_z
-        self.channels = 1 if config.dataset.lower() == 'mnist' else 3
+        self.channels = 1 if config.dataset == 'MNIST' else 3
         self.image_size = config.image_size
         self.num_epochs = config.num_epochs
         self.dataset = config.dataset
@@ -67,10 +67,10 @@ class Trainer:
         self.Q = Q(output_c = self.num_c, FE_dim = self.FE.end_dim)
         self.G = G(input_ = self.dim_z+self.num_d+self.num_c, g_conv_dim=self.g_conv_dim, image_size=self.image_size,output_c=self.channels)
         
-        # self.print_network(self.FE,'FrontEnd')
-        # self.print_network(self.D,'D')
-        # self.print_network(self.Q,'Q')
-        # self.print_network(self.G,'G')
+        self.print_network(self.FE,'FrontEnd')
+        self.print_network(self.D,'D')
+        self.print_network(self.Q,'Q')
+        self.print_network(self.G,'G')
         
         self.FE.to(self.device).apply(weights_init)
         self.D.to(self.device).apply(weights_init)
@@ -276,7 +276,8 @@ class Trainer:
                         z = torch.cat([fix_noise,fix_labels, fix_con_c], 1).view(10*self.num_d, -1 , 1, 1)
                         x_save = self.G(z)
                         save_image(self.denorm(x_save.data.cpu()), self.sample_save_dir + '/{}-{}-c{}.png'.format(epoch,num_iters,i), nrow=10)
-                    self.G.train()
+                
+                self.G.train()
 
             if (num_iters+1) % self.model_save_step==0:
                 self.save_models(epoch+1, num_iters+1)

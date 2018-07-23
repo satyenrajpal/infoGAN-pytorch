@@ -276,7 +276,7 @@ class Trainer:
                         fix_con_c.data.copy_(torch.from_numpy(cont_c))
                         z = torch.cat([fix_noise,fix_labels, fix_con_c], 1).view(10*self.num_d, -1 , 1, 1)
                         x_save = self.G(z)
-                        save_image(x_save.data, self.sample_save_dir + '/{}-{}-c{}.png'.format(epoch,num_iters,i), nrow=10)
+                        save_image(self.denorm(x_save.data), self.sample_save_dir + '/{}-{}-c{}.png'.format(epoch,num_iters,i), nrow=10)
                 
                 self.G.train()
 

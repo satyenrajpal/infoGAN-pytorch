@@ -4,7 +4,7 @@ import math
 class FrontEnd(nn.Module):
   ''' front end part of discriminator and Q'''
 
-  def __init__(self, inp_c, conv_dim=64, image_size=32, lRelu_slope=0.01):
+  def __init__(self, inp_c, conv_dim=64, image_size=32, lRelu_slope=0.1):
     super(FrontEnd, self).__init__()
 
     layers = []
@@ -82,7 +82,7 @@ class G(nn.Module):
       curr_dim = curr_dim//2
 
     layers.append(nn.ConvTranspose2d(curr_dim, output_c, 4, 2, 1, bias=False))
-    layers.append(nn.Sigmoid())
+    layers.append(nn.Tanh())
     
     self.generate = nn.Sequential(*layers)
     self.image_size = image_size

@@ -53,7 +53,9 @@ class Trainer:
         self.n_critic = config.n_critic
         self.FE_conv_dim = config.FE_conv_dim
         self.g_conv_dim = config.g_conv_dim
-        
+        self.g_lr = config.g_lr
+        self.d_lr = config.d_lr
+
         # Misc
         self.num_workers = config.num_workers
         self.sample_step = config.sample_step
@@ -136,6 +138,13 @@ class Trainer:
         dydx_l2norm = torch.sqrt(torch.sum(dydx**2, dim=1))
         return torch.mean((dydx_l2norm-1)**2)
 
+    def update_lr(self, g_lr, d_lr):
+        """Decay learning rates of the generator and discriminator."""
+        for param_group in self.optimG.param_groups:
+            param_group['lr'] = g_lr
+        for param_group in self.optimD.param_groups:
+            param_group['lr'] = d_lr
+
     def denorm(self, x):
         """Convert the range from [-1, 1] to [0, 1]."""
         out = (x + 1) / 2
@@ -144,8 +153,8 @@ class Trainer:
     def optLosses(self):
         self.CELoss = nn.CrossEntropyLoss().to(self.device)
         self.GaussLoss = log_gaussian() 
-        self.optimD = optim.Adam([{'params' : self.FE.parameters()}, {'params' : self.D.parameters()}], lr = 0.0002, betas = (0.5, 0.99))
-        self.optimG = optim.Adam([{'params' : self.G.parameters() }, {'params' : self.Q.parameters()}], lr = 0.0001, betas = (0.5, 0.99))
+        self.optimD = optim.Adam([{'params' : self.FE.parameters()}, {'params' : self.D.parameters()}], lr = self.d_lr, betas = (0.5, 0.99))
+        self.optimG = optim.Adam([{'params' : self.G.parameters() }, {'params' : self.Q.parameters()}], lr = self.g_lr, betas = (0.5, 0.99))
     
     def make_fixed_cond(self):
         c = np.linspace(-1, 1, 10).reshape(1, -1)
@@ -176,12 +185,16 @@ class Trainer:
         rf_label = torch.FloatTensor(self.batch_size).to(self.device)
         labels   = torch.FloatTensor(self.batch_size, self.num_d).requires_grad_().to(self.device)
         con_c    = torch.FloatTensor(self.batch_size, self.num_c).requires_grad_().to(self.device)
-        noise    = torch.FloatTensor(self.batch_size,self.dim_z).requires_grad_(True).to(self.device)
-        fix_noise = torch.FloatTensor(self.num_d*10,self.dim_z).uniform_(0,1).to(self.device)
+        noise    = torch.FloatTensor(self.batch_size, self.dim_z).requires_grad_(True).to(self.device)
+        fix_noise = torch.FloatTensor(self.num_d*10, self.dim_z).uniform_(0,1).to(self.device)
         
         # fixed random variables for testing
         con_c_,  fix_labels = self.make_fixed_cond()
         fix_con_c = torch.FloatTensor(10*self.num_d,self.num_c).to(self.device)
+        
+        g_lr = self.g_lr
+        d_lr = self.d_lr
+        
         loss_ = {}
         
         for epoch in range(self.num_epochs):
@@ -289,3 +302,9 @@ class Trainer:
 
             if (num_iters+1) % self.model_save_step==0:
                 self.save_models(epoch+1, num_iters+1)
+
+            if (epoch*len(dataloader)//self.batch_size+num_iters+1) % 10000 == 0:
+                g_lr -= (self.g_lr/10000.0)
+                d_lr -= (self.d_lr/10000.0)
+                self.update_lr(g_lr, d_lr) 
+

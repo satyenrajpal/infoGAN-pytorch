@@ -4,10 +4,6 @@ import os
 import argparse
 import torch
 
-# TODO:
-#  - Replace BatchNorm with Instance Norm WORKS!
-#  - L2 loss instead of factored Gaussian!?
-#  - Replicate DC GAN architecture - Not working!
 
 def str2bool(v):
     return v.lower() in ('true')

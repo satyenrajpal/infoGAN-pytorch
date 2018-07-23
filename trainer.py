@@ -30,10 +30,12 @@ class Trainer:
         self.batch_size = config.batch_size
         self.num_d = config.num_d
         self.num_c = config.num_c
+        self.dim_z = config.dim_z
         self.channels = 1 if config.dataset.lower() == 'mnist' else 3
         self.image_size = config.image_size
         self.num_epochs = config.num_epochs
         self.dataset = config.dataset
+        self.crop_size = config.crop_size
 
         # Directories
         self.sample_save_dir = config.sample_save_dir
@@ -45,7 +47,6 @@ class Trainer:
         self.lambda_cls = config.lambda_cls
         self.lambda_MI = config.lambda_MI
         self.lambda_gp = config.lambda_gp
-        self.lambda_con = config.lambda_con
         self.n_critic = config.n_critic
         self.FE_conv_dim = config.FE_conv_dim
         self.g_conv_dim = config.g_conv_dim
@@ -55,28 +56,46 @@ class Trainer:
         self.sample_step = config.sample_step
         self.model_save_step = config.model_save_step
         self.log_step = config.log_step
+        self.mode = config.mode
         self.build_models()
     
     def build_models(self):
         self.FE = FrontEnd(self.channels, conv_dim=self.FE_conv_dim, image_size=self.image_size)
         self.D = D(classes = self.num_d, FE_dim = self.FE.end_dim)
         self.Q = Q(output_c = self.num_c, FE_dim = self.FE.end_dim)
-        self.G = G(input_ = self.num_d+self.num_c, g_conv_dim=self.g_conv_dim, image_size=self.image_size,output_c=self.channels)
-    
+        self.G = G(input_ = self.dim_z+self.num_d+self.num_c, g_conv_dim=self.g_conv_dim, image_size=self.image_size,output_c=self.channels)
+        
+        # self.print_network(self.FE,'FrontEnd')
+        # self.print_network(self.D,'D')
+        # self.print_network(self.Q,'Q')
+        # self.print_network(self.G,'G')
+        
         self.FE.to(self.device).apply(weights_init)
         self.D.to(self.device).apply(weights_init)
         self.Q.to(self.device).apply(weights_init)
         self.G.to(self.device).apply(weights_init)
 
+
+    def print_network(self, model, name):
+        """Print out the network information."""
+        num_params = 0
+        for p in model.parameters():
+            num_params += p.numel()
+        print(name)
+        print(model)
+        print("The number of parameters: {}".format(num_params))
+
+
     def save_models(self,epoch,num_iters):
-        G_path  = os.path.join(self.model_save_dir,'{}-{}-G.ckpt'.format(epoch,num_iters))
-        FE_path = os.path.join(self.model_save_dir,'{}-{}-FE.ckpt'.format(epoch,num_iters))
-        D_path  = os.path.join(self.model_save_dir,'{}-{}-D.ckpt'.format(epoch,num_iters))
-        Q_path  = os.path.join(self.model_save_dir,'{}-{}-Q.ckpt'.format(epoch,num_iters))
-        torch.save(self.G.state_dict(),G_path)
-        torch.save(self.FE.state_dict(),FE_path)
-        torch.save(self.D.state_dict(),D_path)
-        torch.save(self.Q.state_dict(),Q_path)
+        G_path  = os.path.join(self.model_save_dir, '{}-{}-G.ckpt'.format(epoch,num_iters))
+        FE_path = os.path.join(self.model_save_dir, '{}-{}-FE.ckpt'.format(epoch,num_iters))
+        D_path  = os.path.join(self.model_save_dir, '{}-{}-D.ckpt'.format(epoch,num_iters))
+        Q_path  = os.path.join(self.model_save_dir, '{}-{}-Q.ckpt'.format(epoch,num_iters))
+        torch.save(self.G.state_dict(),  G_path)
+        torch.save(self.FE.state_dict(), FE_path)
+        torch.save(self.D.state_dict(),  D_path)
+        torch.save(self.Q.state_dict(),  Q_path)
+        print("Models saved at {} for {} epoch and {} iter".format(self.model_save_dir,epoch,num_iters))
 
     def restore_models(self,dir_,epoch,iters):
         print("Loading the trained models from {} epoch and {} step in {} dir".format(epoch,iters,dir_))
@@ -89,15 +108,15 @@ class Trainer:
         self.D.load_state_dict(torch.load(D_path,map_location= lambda storage, loc: storage))
         self.Q.load_state_dict(torch.load(Q_path,map_location= lambda storage, loc: storage))
 
+    def _make_conditions(self,labels,x_label,con_c,noise):
 
-    def _make_conditions(self,labels,x_label,con_c,bs):
-
+        bs = x_label.size(0)
         c = np.zeros((bs, 10))
-        c[range(bs),x_label] = 1.0
+        c[range(bs),x_label.data] = 1.0
         labels.data.copy_(torch.Tensor(c))
         con_c.data.uniform_(-1.0,1.0)
-        z = torch.cat([labels,con_c],dim=1).view(bs,-1,1,1)
-
+        noise.data.normal_(0,1)
+        z = torch.cat([noise,labels,con_c], dim=1).view(bs,-1,1,1)
         return z
 
     def gradient_penalty(self, y, x):
@@ -125,45 +144,52 @@ class Trainer:
         self.optimD = optim.Adam([{'params' : self.FE.parameters()}, {'params' : self.D.parameters()}], lr = 0.0002, betas = (0.5, 0.99))
         self.optimG = optim.Adam([{'params' : self.G.parameters() }, {'params' : self.Q.parameters()}], lr = 0.0001, betas = (0.5, 0.99))
     
-    #CHANGE DIM OF THIS!
     def make_fixed_cond(self):
         c = np.linspace(-1, 1, 10).reshape(1, -1)
-        c = np.repeat(c, 10, 0).reshape(-1,1)
+        c = np.repeat(c, self.num_d, 0).reshape(-1,1)
 
         con_c_ = []
         for i in range(self.num_c):
-            p = np.zeros((100,self.num_c))
+            p = np.zeros((10*self.num_d,self.num_c))
             p[:,i] = np.squeeze(c)
             con_c_.append(p)
         
-        idx = np.arange(10).repeat(10)
-        one_hot = np.zeros((100, 10))
-        one_hot[range(100), idx] = 1
+        idx = np.arange(self.num_d).repeat(10)
+        one_hot = np.zeros((10*self.num_d, self.num_d))
+        one_hot[range(10*self.num_d), idx] = 1
         fix_labels = torch.FloatTensor(torch.from_numpy(one_hot).float()).to(self.device)
-        fix_con_c = torch.FloatTensor(100,self.num_c).to(self.device)
         
-        return con_c_, fix_con_c, fix_labels
+        return con_c_, fix_labels
 
     def train(self):
 
-        dataloader = get_loader(self.image_size,self.batch_size,self.image_dir,self.num_workers,self.dataset)
+        dataloader = get_loader(self.mode,self.image_size,
+                                self.batch_size,self.image_dir,
+                                self.num_workers,self.dataset,
+                                self.crop_size)
         self.optLosses()
 
         real_x   = torch.FloatTensor(self.batch_size, self.channels, self.image_size, self.image_size).requires_grad_().to(self.device)
         rf_label = torch.FloatTensor(self.batch_size).to(self.device)
         labels   = torch.FloatTensor(self.batch_size, self.num_d).requires_grad_().to(self.device)
         con_c    = torch.FloatTensor(self.batch_size, self.num_c).requires_grad_().to(self.device)
-        
+        noise    = torch.FloatTensor(self.batch_size,self.dim_z).requires_grad_(True).to(self.device)
+        fix_noise = torch.FloatTensor(self.num_d*10,self.dim_z).normal_(0,1).to(self.device)
         
         # fixed random variables for testing
-        con_c_, fix_con_c, fix_labels = self.make_fixed_cond()
-
+        con_c_,  fix_labels = self.make_fixed_cond()
+        fix_con_c = torch.FloatTensor(10*self.num_d,self.num_c).to(self.device)
+        
         
         for epoch in range(self.num_epochs):
           for num_iters, batch_data in enumerate(dataloader, 0):
-
-            # real part
+            
             self.optimD.zero_grad()
+            self.optimG.zero_grad()
+
+            #####################################################################
+            #                   Fetch data and make conditions                  #
+            #####################################################################                                
             
             x, x_label = batch_data 
             
@@ -173,27 +199,31 @@ class Trainer:
             labels.data.resize_(bs, self.num_d)
             con_c.data.resize_(bs, self.num_c)
             
-            # Random conditioned 'z' 
-            cond = self._make_conditions(labels, x_label, con_c, bs)        
+            # Labels to OH vector and concatanate noise 
+            cond = self._make_conditions(labels, x_label, con_c, noise)        
             x_label = x_label.to(self.device)
             
-            # Real part
+            #####################################################################
+            #                   Train Critic(WGAN-GP)/ Discriminator            #
+            #####################################################################                                
+            
             real_x.data.copy_(x)
             fe_out1 = self.FE(real_x)
             out_real, out_cls = self.D(fe_out1)
             
-            # GAN loss
+            # Real - WGAN loss (Maximize D(X))
             loss_real = -torch.mean(out_real)
             
-            # Classification loss
+            # Classification loss (Minimise CrossEntropy(y;D(L|X))
             loss_class = self.CELoss(out_cls,x_label)
             
-            # fake part
+            # Fake - WGAN Loss (Minimize (D(G(c)))
             fake_x = self.G(cond)
             fe_out2 = self.FE(fake_x.detach())
             out_fake, _ = self.D(fe_out2)
             loss_fake = torch.mean(out_fake)
             
+            # Gradient penalty (Minimize (Grad(D(x_hat))-1)^2)
             alpha = torch.rand(real_x.size(0), 1, 1, 1).to(self.device)
             x_hat = (alpha * real_x.data + (1 - alpha) * real_x.data).requires_grad_(True)
             out_src, _ = self.D(self.FE(x_hat))
@@ -203,42 +233,48 @@ class Trainer:
             D_loss.backward()
             self.optimD.step()
 
-            # G and Q part
+            #####################################################################
+            #                   Train Generator                                 #
+            #####################################################################                                
+            
             if (num_iters+1) % self.n_critic ==0:
                 self.optimG.zero_grad()
+                self.optimD.zero_grad()
 
                 x_fake = self.G(cond)
                 fe_out = self.FE(fake_x)
                 out_fake, out_cls = self.D(fe_out)
                 
-                # WGAN loss
+                # Fake - WGAN loss (Maximise D(G(c)))
                 fake_loss = -torch.mean(out_fake)
                 
-                #Classification loss
+                #Classification loss (Minimise CrossEntropy(y;D(L|G(c)))
                 g_loss_cls = self.CELoss(out_cls,x_label)
 
+                # Gaussian loss (Maximize Gaussian Likelihood)
                 q_mu, q_var = self.Q(fe_out)
                 con_loss = self.GaussLoss(con_c, q_mu, q_var)
                 
-                G_loss = fake_loss + self.lambda_cls*g_loss_cls + self.lambda_con*con_loss
+                G_loss = fake_loss + self.lambda_cls*g_loss_cls + self.lambda_MI*con_loss
                 G_loss.backward()
                 self.optimG.step()
 
             if (num_iters+1) % self.log_step ==0:
-                print('Epoch - Iter:{0} - {1}, Dloss: {2}, Gloss: {3}, Classification Loss: {4}, Gaussian Loss: {5}'.format(
-                       epoch, num_iters, D_loss.data.cpu().numpy(),
+                print('Epoch-{0} - Iter-{1}; Dloss: {2}, Gloss: {3}, Classification Loss: {4}, Gaussian Loss: {5}'.format(
+                       epoch+1, num_iters+1, D_loss.data.cpu().numpy(),
                         G_loss.data.cpu().numpy(),
                         loss_class.data.cpu().numpy(),
                         con_loss.data.cpu().numpy()))
 
             if (num_iters+1) % self.sample_step == 0:
-                
                 with torch.no_grad():
+                    self.G.eval()
                     for i,cont_c in enumerate(con_c_):
                         fix_con_c.data.copy_(torch.from_numpy(cont_c))
-                        z = torch.cat([fix_labels, fix_con_c], 1).view(100, -1 , 1, 1)
+                        z = torch.cat([fix_noise,fix_labels, fix_con_c], 1).view(10*self.num_d, -1 , 1, 1)
                         x_save = self.G(z)
                         save_image(x_save.data.cpu(), self.sample_save_dir + '/{}-{}-c{}.png'.format(epoch,num_iters,i), nrow=10)
+                    self.G.train()
 
-            if (num_iters+1) % self.model_save_step:
-                self.save_models(epoch, num_iters)
+            if (num_iters+1) % self.model_save_step==0:
+                self.save_models(epoch+1, num_iters+1)

@@ -42,7 +42,9 @@ class Trainer:
         self.model_save_dir = config.model_save_dir
         if self.dataset.lower() == 'mnist':
             self.image_dir = config.mnist_dir
-    
+        elif self.dataset == 'RafD':
+            self.image_dir = config.rafd_image_dir
+
         # Hyperparameters
         self.lambda_cls = config.lambda_cls
         self.lambda_MI = config.lambda_MI
@@ -111,7 +113,7 @@ class Trainer:
     def _make_conditions(self,labels,x_label,con_c,noise):
 
         bs = x_label.size(0)
-        c = np.zeros((bs, 10))
+        c = np.zeros((bs, self.num_d))
         c[range(bs),x_label.data] = 1.0
         labels.data.copy_(torch.Tensor(c))
         con_c.data.uniform_(-1.0,1.0)
@@ -192,13 +194,13 @@ class Trainer:
             #####################################################################                                
             
             x, x_label = batch_data 
-            
             bs = x.size(0)
             real_x.data.resize_(x.size())
             rf_label.data.resize_(bs,1)
             labels.data.resize_(bs, self.num_d)
             con_c.data.resize_(bs, self.num_c)
-            
+            noise.data.resize_(bs, self.dim_z)
+
             # Labels to OH vector and concatanate noise 
             cond = self._make_conditions(labels, x_label, con_c, noise)        
             x_label = x_label.to(self.device)

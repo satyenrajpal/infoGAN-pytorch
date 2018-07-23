@@ -182,7 +182,7 @@ class Trainer:
         # fixed random variables for testing
         con_c_,  fix_labels = self.make_fixed_cond()
         fix_con_c = torch.FloatTensor(10*self.num_d,self.num_c).to(self.device)
-        
+        loss_ = {}
         
         for epoch in range(self.num_epochs):
           for num_iters, batch_data in enumerate(dataloader, 0):
@@ -235,7 +235,11 @@ class Trainer:
             D_loss = loss_real + loss_fake + self.lambda_cls* loss_class + self.lambda_gp*d_loss_gp
             D_loss.backward()
             self.optimD.step()
-
+            
+            loss_['D/Real'] = loss_real.item()
+            loss_['D/Fake'] = loss_fake.item()
+            loss_['D/Classification'] = loss_class.item()
+            loss_['D/GP'] = d_loss_gp.item()
             #####################################################################
             #                   Train Generator                                 #
             #####################################################################                                
@@ -262,13 +266,16 @@ class Trainer:
                 G_loss.backward()
                 self.optimG.step()
 
-            if (num_iters+1) % self.log_step ==0:
-                print('Epoch-{0} - Iter-{1}; Dloss: {2}, Gloss: {3}, Classification Loss: {4}, Gaussian Loss: {5}'.format(
-                       epoch+1, num_iters+1, D_loss.data.cpu().numpy(),
-                        G_loss.data.cpu().numpy(),
-                        loss_class.data.cpu().numpy(),
-                        con_loss.data.cpu().numpy()))
+                loss_['G/Fake'] = fake_loss.item()
+                loss_['G/Classification'] = g_loss_cls.item()
+                loss_['G/Gauss'] = con_loss.item()
 
+            if (num_iters+1) % self.log_step ==0:
+                log = 'Epoch-{0} - Iter-{1}; '.format(epoch+1,num_iters+1)
+                for loss_type, value in loss_.items():
+                    log+='{}: {}'.format(loss_type,value)
+                print(log)
+                    
             if (num_iters+1) % self.sample_step == 0:
                 with torch.no_grad():
                     self.G.eval()

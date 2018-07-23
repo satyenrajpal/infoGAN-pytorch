@@ -51,9 +51,9 @@ class Q(nn.Module):
   def __init__(self,output_c=2,FE_dim=1024):
     super(Q, self).__init__()
 
-    self.conv = nn.Conv2d(FE_dim, 128, 1, bias=False)
-    self.conv_mu = nn.Conv2d(128, output_c, 1)
-    self.conv_var = nn.Conv2d(128, output_c, 1)
+    self.conv = nn.Conv2d(FE_dim, 512, 1, bias=False)
+    self.conv_mu = nn.Conv2d(512, output_c, 1)
+    self.conv_var = nn.Conv2d(512, output_c, 1)
 
   def forward(self, x):
 

@@ -2,6 +2,8 @@ from trainer import Trainer
 import torch
 import os
 import argparse
+import torch
+
 # TODO:
 #  - Replace BatchNorm with Instance Norm WORKS!
 #  - L2 loss instead of factored Gaussian!?
@@ -13,7 +15,8 @@ def str2bool(v):
 def main(config):
 
     if config.mode == 'train':
-        
+        torch.manual_seed(1234)
+
         config.sample_save_dir = os.path.join(config.save_dir, 'samples')
         if not os.path.exists(config.sample_save_dir):
             os.makedirs(config.sample_save_dir)
@@ -57,6 +60,7 @@ if __name__ == '__main__':
     parser.add_argument('--beta2', type=float, default=0.99, help='beta2 for Adam optimizer')
     parser.add_argument('--resume_iter', type=int,default=0)
     parser.add_argument('--resume_epoch', type=int,default=0)
+    parser.add_argument('--lRelu_slope', type=float,default=0.1)
     
     # Test configuration.
     parser.add_argument('--test_iters', type=int, default=200000, help='test model from this step')

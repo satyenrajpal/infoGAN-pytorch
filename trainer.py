@@ -36,6 +36,7 @@ class Trainer:
         self.num_epochs = config.num_epochs
         self.dataset = config.dataset
         self.crop_size = config.crop_size
+        self.lRelu_slope = config.lRelu_slope
 
         # Directories
         self.sample_save_dir = config.sample_save_dir
@@ -62,7 +63,7 @@ class Trainer:
         self.build_models()
     
     def build_models(self):
-        self.FE = FrontEnd(self.channels, conv_dim=self.FE_conv_dim, image_size=self.image_size)
+        self.FE = FrontEnd(self.channels, conv_dim=self.FE_conv_dim, image_size=self.image_size, lRelu_slope=self.lRelu_slope)
         self.D = D(classes = self.num_d, FE_dim = self.FE.end_dim)
         self.Q = Q(output_c = self.num_c, FE_dim = self.FE.end_dim)
         self.G = G(input_ = self.dim_z+self.num_d+self.num_c, g_conv_dim=self.g_conv_dim, image_size=self.image_size,output_c=self.channels)
@@ -116,8 +117,8 @@ class Trainer:
         c = np.zeros((bs, self.num_d))
         c[range(bs),x_label.data] = 1.0
         labels.data.copy_(torch.Tensor(c))
-        con_c.data.uniform_(-1.0,1.0)
-        noise.data.normal_(0,1)
+        con_c.data.uniform_(-1.0, 1.0)
+        noise.data.uniform_(-1.0, 1.0)
         z = torch.cat([noise,labels,con_c], dim=1).view(bs,-1,1,1)
         return z
 
@@ -176,7 +177,7 @@ class Trainer:
         labels   = torch.FloatTensor(self.batch_size, self.num_d).requires_grad_().to(self.device)
         con_c    = torch.FloatTensor(self.batch_size, self.num_c).requires_grad_().to(self.device)
         noise    = torch.FloatTensor(self.batch_size,self.dim_z).requires_grad_(True).to(self.device)
-        fix_noise = torch.FloatTensor(self.num_d*10,self.dim_z).normal_(0,1).to(self.device)
+        fix_noise = torch.FloatTensor(self.num_d*10,self.dim_z).uniform_(0,1).to(self.device)
         
         # fixed random variables for testing
         con_c_,  fix_labels = self.make_fixed_cond()
@@ -186,9 +187,6 @@ class Trainer:
         for epoch in range(self.num_epochs):
           for num_iters, batch_data in enumerate(dataloader, 0):
             
-            self.optimD.zero_grad()
-            self.optimG.zero_grad()
-
             #####################################################################
             #                   Fetch data and make conditions                  #
             #####################################################################                                
@@ -209,6 +207,9 @@ class Trainer:
             #                   Train Critic(WGAN-GP)/ Discriminator            #
             #####################################################################                                
             
+            self.optimD.zero_grad()
+            self.optimG.zero_grad()
+
             real_x.data.copy_(x)
             fe_out1 = self.FE(real_x)
             out_real, out_cls = self.D(fe_out1)
@@ -275,7 +276,7 @@ class Trainer:
                         fix_con_c.data.copy_(torch.from_numpy(cont_c))
                         z = torch.cat([fix_noise,fix_labels, fix_con_c], 1).view(10*self.num_d, -1 , 1, 1)
                         x_save = self.G(z)
-                        save_image(self.denorm(x_save.data.cpu()), self.sample_save_dir + '/{}-{}-c{}.png'.format(epoch,num_iters,i), nrow=10)
+                        save_image(x_save.data, self.sample_save_dir + '/{}-{}-c{}.png'.format(epoch,num_iters,i), nrow=10)
                 
                 self.G.train()
 

@@ -13,8 +13,10 @@ def get_loader(mode,image_size,batch_size,image_dir,num_workers,dataset,crop_siz
         transform_op.append(T.CenterCrop(crop_size))
     transform_op.append(T.Resize((image_size,image_size)))
     transform_op.append(T.ToTensor())
-    if dataset != 'MNIST':
+    if dataset!='MNIST':
         transform_op.append(T.Normalize(mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5)))
+    # elif dataset=='MNIST':
+    #     transform_op.append(T.Normalize(mean=[0.5], std=[0.5]))
     transform_op = T.Compose(transform_op)
 
     if dataset == 'MNIST':
@@ -22,7 +24,8 @@ def get_loader(mode,image_size,batch_size,image_dir,num_workers,dataset,crop_siz
     elif dataset == 'RafD':
         dataset = ImageFolder(image_dir,transform_op) 
 
-    dataloader = DataLoader(dataset, batch_size=batch_size, 
+    dataloader = DataLoader(dataset, 
+                            batch_size=batch_size, 
                             shuffle=(mode=='train'),
                             num_workers=num_workers)
     return dataloader

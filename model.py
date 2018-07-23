@@ -4,18 +4,18 @@ import math
 class FrontEnd(nn.Module):
   ''' front end part of discriminator and Q'''
 
-  def __init__(self, inp_c, conv_dim=64, image_size=32):
+  def __init__(self, inp_c, conv_dim=64, image_size=32, lRelu_slope=0.01):
     super(FrontEnd, self).__init__()
 
     layers = []
     layers.append(nn.Conv2d(inp_c, conv_dim, 4, 2, 1))
-    layers.append(nn.LeakyReLU(0.1, inplace=True)) #slope 0.01?
+    layers.append(nn.LeakyReLU(lRelu_slope, inplace=True)) #slope 0.01?
     
     curr_dim = conv_dim
     for i in range(int(math.log2(image_size)-1)):
       layers.append(nn.Conv2d(curr_dim, curr_dim*2, 4, 2, 1))
-      layers.append(nn.BatchNorm2d(curr_dim*2))
-      layers.append(nn.LeakyReLU(0.1, inplace=True)) #slope 0.01?
+      # layers.append(nn.BatchNorm2d(curr_dim*2))
+      layers.append(nn.LeakyReLU(lRelu_slope, inplace=True)) #slope 0.01?
       curr_dim = curr_dim*2
 
     self.dim = curr_dim
@@ -52,15 +52,12 @@ class Q(nn.Module):
     super(Q, self).__init__()
 
     self.conv = nn.Conv2d(FE_dim, 128, 1, bias=False)
-    self.bn = nn.BatchNorm2d(128)
-    self.lReLU = nn.LeakyReLU(0.1, inplace=True)
     self.conv_mu = nn.Conv2d(128, output_c, 1)
     self.conv_var = nn.Conv2d(128, output_c, 1)
 
   def forward(self, x):
 
     y = self.conv(x)
-    # y = self.lReLU(self.bn(y))
     
     mu = self.conv_mu(y).squeeze()
     var = self.conv_var(y).squeeze().exp()
@@ -74,18 +71,18 @@ class G(nn.Module):
 
     layers = []
     layers.append(nn.ConvTranspose2d(input_, g_conv_dim, 1, 1, bias=False))
-    layers.append(nn.BatchNorm2d(g_conv_dim))
+    # layers.append(nn.InstanceNorm2d(g_conv_dim))
     layers.append(nn.ReLU(True))
     
     curr_dim = g_conv_dim
     for i in range(int(math.log2(image_size))-1):
       layers.append(nn.ConvTranspose2d(curr_dim, curr_dim//2, 4, 2, 1, bias=False))
-      layers.append(nn.InstanceNorm2d(curr_dim//2, affine=True,track_running_stats=True))
+      layers.append(nn.BatchNorm2d(curr_dim//2, affine=True,track_running_stats=True))
       layers.append(nn.ReLU(True))
       curr_dim = curr_dim//2
 
     layers.append(nn.ConvTranspose2d(curr_dim, output_c, 4, 2, 1, bias=False))
-    layers.append(nn.Tanh())
+    layers.append(nn.Sigmoid())
     
     self.generate = nn.Sequential(*layers)
     self.image_size = image_size

@@ -57,7 +57,7 @@ if __name__ == '__main__':
     parser.add_argument('--resume_iter', type=int,default=0)
     parser.add_argument('--resume_epoch', type=int,default=0)
     parser.add_argument('--lRelu_slope', type=float,default=0.1)
-    
+    parser.add_argument('--res', action='store_true', default=False, help='Use residual layers is Generator?')
     # Test configuration.
     parser.add_argument('--test_iters', type=int, default=200000, help='test model from this step')
 

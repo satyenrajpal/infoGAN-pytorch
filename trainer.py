@@ -62,13 +62,13 @@ class Trainer:
         self.model_save_step = config.model_save_step
         self.log_step = config.log_step
         self.mode = config.mode
-        self.build_models()
+        self.build_models(config.res)
     
-    def build_models(self):
+    def build_models(self, res):
         self.FE = FrontEnd(self.channels, conv_dim=self.FE_conv_dim, image_size=self.image_size, lRelu_slope=self.lRelu_slope)
         self.D = D(classes = self.num_d, FE_dim = self.FE.end_dim)
         self.Q = Q(output_c = self.num_c, FE_dim = self.FE.end_dim)
-        self.G = G(input_ = self.dim_z+self.num_d+self.num_c, g_conv_dim=self.g_conv_dim, image_size=self.image_size,output_c=self.channels)
+        self.G = G(input_ = self.dim_z+self.num_d+self.num_c, g_conv_dim=self.g_conv_dim, image_size=self.image_size,output_c=self.channels, res=res)
         
         self.print_network(self.FE,'FrontEnd')
         self.print_network(self.D,'D')
@@ -286,7 +286,7 @@ class Trainer:
             if (num_iters+1) % self.log_step ==0:
                 log = 'Epoch-{0} - Iter-{1}; '.format(epoch+1,num_iters+1)
                 for loss_type, value in loss_.items():
-                    log+='{}: {}'.format(loss_type,value)
+                    log+=' {}: {} '.format(loss_type,value)
                 print(log)
                     
             if (num_iters+1) % self.sample_step == 0:

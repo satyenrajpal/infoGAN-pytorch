@@ -25,6 +25,10 @@ def main(config):
         
         if config.restore_dir!='':
             trainer.restore_models(config.restore_dir,config.resume_epoch,config.resume_iter)
+
+        with open(os.path.join(config.save_dir,'config.txt'), 'w') as file_:
+            for i in config.__dict__:
+                file_.write("{} - {} \n ".format(i, config.__dict__[i]))
         
         print("Training...")
         trainer.train()

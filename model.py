@@ -30,7 +30,7 @@ class G(nn.Module):
     curr_dim = g_conv_dim
     for i in range(int(math.log2(image_size))-1):
       layers.append(nn.ConvTranspose2d(curr_dim, curr_dim//2, 4, 2, 1, bias=False))
-      layers.append(nn.InstanceNorm2d(curr_dim//2, affine=True,track_running_stats=True))
+      layers.append(nn.BatchNorm2d(curr_dim//2, affine=True,track_running_stats=True))
       layers.append(nn.ReLU(True))
       if res and i>3:
         layers.append(ResidualBlock(curr_dim//2, curr_dim//2))

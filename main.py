@@ -47,7 +47,7 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_gp', type=float, default=5, help='weight for gradient penalty')
     parser.add_argument('--lambda_MI', type=float, default=1, help='weight for Mutual information loss')
     parser.add_argument('--image_size', type=int, default=32, help='Size of images in dataset')
-    parser.add_argument('--FE_conv_dim',type=int,default=64,help='start conv dim for FrontEnd')
+    parser.add_argument('--FE_conv_dim',type=int,default=32,help='start conv dim for FrontEnd')
     parser.add_argument('--g_conv_dim',type=int,default=1024, help = 'start conv dim for Generator')
     parser.add_argument('--crop_size',type=int,default=650,help='Crop Size for RafD dataset')
     
@@ -81,7 +81,7 @@ if __name__ == '__main__':
     # Step size.
     parser.add_argument('--log_step', type=int, default=100)
     parser.add_argument('--sample_step', type=int, default=100)
-    parser.add_argument('--model_save_step', type=int, default=10000)
+    parser.add_argument('--model_save_step', type=int, default=99)
     parser.add_argument('--lr_update_step', type=int, default=1000)
 
     config = parser.parse_args()

@@ -21,6 +21,13 @@ class log_gaussian:
     
     return logli.sum(1).mean().mul(-1)
 
+class log_prod_gaussian:
+
+    def __call__(self, x, mu, var):
+
+        log_prod = -0.5*torch.sum((x-mu).pow(2).div(var +1e-6)) - (torch.sum(var,1)+ 1e-6).log() - (torch.ones(x.size(0))*np.pi).log().mul(x.size(1)/2)
+        return log_prod.mean().mul(-1)
+
 class Trainer:
 
     def __init__(self, config):
@@ -62,6 +69,7 @@ class Trainer:
         self.model_save_step = config.model_save_step
         self.log_step = config.log_step
         self.mode = config.mode
+        self.resume_epoch = config.resume_epoch
         self.build_models(config.res)
     
     def build_models(self, res):
@@ -155,7 +163,8 @@ class Trainer:
         self.GaussLoss = log_gaussian() 
         self.optimD = optim.Adam([{'params' : self.FE.parameters()}, {'params' : self.D.parameters()}], lr = self.d_lr, betas = (0.5, 0.99))
         self.optimG = optim.Adam([{'params' : self.G.parameters() }, {'params' : self.Q.parameters()}], lr = self.g_lr, betas = (0.5, 0.99))
-    
+        self.logprod = log_prod_gaussian()
+
     def make_fixed_cond(self):
         c = np.linspace(-1, 1, 10).reshape(1, -1)
         c = np.repeat(c, self.num_d, 0).reshape(-1,1)
@@ -197,7 +206,7 @@ class Trainer:
         
         loss_ = {}
         
-        for epoch in range(self.num_epochs):
+        for epoch in range(self.resume_epoch+1,self.num_epochs):
           for num_iters, batch_data in enumerate(dataloader, 0):
             
             #####################################################################
@@ -274,8 +283,9 @@ class Trainer:
                 # Gaussian loss (Maximize Gaussian Likelihood)
                 q_mu, q_var = self.Q(fe_out)
                 con_loss = self.GaussLoss(con_c, q_mu, q_var)
-                
-                G_loss = fake_loss + self.lambda_cls*g_loss_cls + self.lambda_MI*con_loss
+                prod_loss = self.logprod(con_c,q_mu,q_var)
+
+                G_loss = fake_loss + self.lambda_cls*g_loss_cls + self.lambda_MI*con_loss + prod_loss
                 G_loss.backward()
                 self.optimG.step()
 

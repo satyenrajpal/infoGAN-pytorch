@@ -21,6 +21,20 @@ class log_gaussian:
     
     return logli.sum(1).mean().mul(-1)
 
+class log_prod_gaussian:
+
+    def __init__(self):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    def __call__(self, x, mu, var):
+
+        log_prod = -0.5*torch.sum((x-mu).pow(2).div(var +1e-6)) - \
+         (torch.sum(var,1)+ 1e-6).log() - \
+         (torch.ones(x.size(0))*np.pi).log().to(self.device).mul(x.size(1)/2)
+        
+        return log_prod.mean().mul(-1)
+
+
 class Trainer:
 
     def __init__(self, G, FE, D, Q,num_c=2,num_d=10):
@@ -73,6 +87,7 @@ class Trainer:
         criterionD = nn.BCELoss().to(self.device)
         criterionQ_dis = nn.CrossEntropyLoss().to(self.device)
         criterionQ_con = log_gaussian()
+        logProd_loss = log_prod_gaussian()
 
         optimD = optim.Adam([{'params' : self.FE.parameters()}, {'params' : self.D.parameters()}], lr = 0.0002, betas = (0.5, 0.99))
         optimG = optim.Adam([{'params' : self.G.parameters() }, {'params' : self.Q.parameters()}], lr = 0.0001, betas = (0.5, 0.99))
@@ -154,8 +169,9 @@ class Trainer:
             q_mu, q_var = self.Q(fe_out)
             # dis_loss = criterionQ_dis(q_logits, target)
             con_loss = criterionQ_con(con_c, q_mu, q_var)
-            
-            G_loss = reconstruct_loss + g_loss_cls + con_loss
+            prod_loss = logProd_loss(con_c,q_mu,q_var)
+
+            G_loss = reconstruct_loss + g_loss_cls + con_loss + prod_loss
             G_loss.backward()
             optimG.step()
 

@@ -11,10 +11,10 @@ import os
 import numpy as np
 import sys
 from model import FrontEnd,D,Q,G,weights_init
+from utils import sample_normal, estimate_entropies
 
 
-
-class log_gaussian:
+class log_sum_gaussian:
 
   def __call__(self, x, mu, var):
 
@@ -36,6 +36,19 @@ class log_prod_gaussian:
         
         return log_prod.mean().mul(-1)
 
+class log_gaussian:
+
+    def __init__(self):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    def __call__(self, x, mu, var):
+
+        log_prod = -0.5*(x-mu).pow(2).div(var +1e-6) - \
+         (var + 1e-6).log() - \
+         -0.5*(torch.ones(x.size(0))*np.pi).log().to(self.device)
+        
+        return log_prod.mean()
+
 class Trainer:
 
     def __init__(self, config):
@@ -52,7 +65,7 @@ class Trainer:
         self.dataset = config.dataset
         self.crop_size = config.crop_size
         self.lRelu_slope = config.lRelu_slope
-
+        self.dealign = config.dealign
         # Directories
         self.sample_save_dir = config.sample_save_dir
         self.model_save_dir = config.model_save_dir
@@ -83,13 +96,13 @@ class Trainer:
     def build_models(self, res):
         self.FE = FrontEnd(self.channels, conv_dim=self.FE_conv_dim, image_size=self.image_size, lRelu_slope=self.lRelu_slope)
         self.D = D(classes = self.num_d, FE_dim = self.FE.end_dim)
-        self.Q = Q(output_c = self.num_c, FE_dim = self.FE.end_dim)
+        self.Q = Q(output_c = 1, FE_dim = self.FE.end_dim)
         self.G = G(input_ = self.dim_z+self.num_d+self.num_c, g_conv_dim=self.g_conv_dim, image_size=self.image_size,output_c=self.channels, res=res)
         
-        self.print_network(self.FE,'FrontEnd')
-        self.print_network(self.D,'D')
-        self.print_network(self.Q,'Q')
-        self.print_network(self.G,'G')
+        # self.print_network(self.FE,'FrontEnd')
+        # self.print_network(self.D,'D')
+        # self.print_network(self.Q,'Q')
+        # self.print_network(self.G,'G')
         
         self.FE.to(self.device).apply(weights_init)
         self.D.to(self.device).apply(weights_init)
@@ -105,7 +118,6 @@ class Trainer:
         print(name)
         print(model)
         print("The number of parameters: {}".format(num_params))
-
 
     def save_models(self,epoch,num_iters):
         G_path  = os.path.join(self.model_save_dir, '{}-{}-G.ckpt'.format(epoch,num_iters))
@@ -135,10 +147,18 @@ class Trainer:
         c = np.zeros((bs, self.num_d))
         c[range(bs),x_label.data] = 1.0
         labels.data.copy_(torch.Tensor(c))
-        con_c.data.uniform_(-1.0, 1.0)
         noise.data.uniform_(-1.0, 1.0)
-        z = torch.cat([noise,labels,con_c], dim=1).view(bs,-1,1,1)
-        return z
+        con_c.data.uniform_(-1.0, 1.0)
+        z_D = torch.cat([noise,labels, con_c], dim=1).view(bs,-1,1,1)
+        
+        # Extra
+        z_G = []
+        for dim in range(con_c.size(1)):
+            con_c.data.uniform_(-1.0, 1.0)
+            con_c.data[:,dim] = 0
+            z_G.append(torch.cat([noise,labels,con_c], dim=1).view(bs,-1,1,1))
+        
+        return z_G,z_D 
 
     def gradient_penalty(self, y, x):
         """Compute gradient penalty: (L2_norm(dy/dx) - 1)**2."""
@@ -168,10 +188,11 @@ class Trainer:
 
     def optLosses(self):
         self.CELoss = nn.CrossEntropyLoss().to(self.device)
-        self.GaussLoss = log_gaussian() 
+        self.GaussLoss_sum = log_sum_gaussian() 
         self.optimD = optim.Adam([{'params' : self.FE.parameters()}, {'params' : self.D.parameters()}], lr = self.d_lr, betas = (0.5, 0.99))
         self.optimG = optim.Adam([{'params' : self.G.parameters() }, {'params' : self.Q.parameters()}], lr = self.g_lr, betas = (0.5, 0.99))
         self.logprod = log_prod_gaussian()
+        self.GaussLoss = log_gaussian()
 
     def make_fixed_cond(self):
         c = np.linspace(-1, 1, 10).reshape(1, -1)
@@ -203,18 +224,16 @@ class Trainer:
         labels   = torch.FloatTensor(self.batch_size, self.num_d).requires_grad_().to(self.device)
         con_c    = torch.FloatTensor(self.batch_size, self.num_c).requires_grad_().to(self.device)
         noise    = torch.FloatTensor(self.batch_size, self.dim_z).requires_grad_(True).to(self.device)
-        fix_noise = torch.FloatTensor(self.num_d*10, self.dim_z).uniform_(0,1).to(self.device)
+        fix_noise = torch.FloatTensor(self.num_d*10, self.dim_z).data.uniform_(-1.0, 1.0).to(self.device)
         
         # fixed random variables for testing
         con_c_,  fix_labels = self.make_fixed_cond()
         fix_con_c = torch.FloatTensor(10*self.num_d,self.num_c).to(self.device)
-        
         g_lr = self.g_lr
         d_lr = self.d_lr
-        
         loss_ = {}
         
-        for epoch in range(self.resume_epoch+1,self.num_epochs):
+        for epoch in range(self.resume_epoch,self.num_epochs):
           for num_iters, batch_data in enumerate(dataloader, 0):
             
             #####################################################################
@@ -230,7 +249,7 @@ class Trainer:
             noise.data.resize_(bs, self.dim_z)
 
             # Labels to OH vector and concatanate noise 
-            cond = self._make_conditions(labels, x_label, con_c, noise)        
+            cond_G, cond_D = self._make_conditions(labels, x_label, con_c, noise)        
             x_label = x_label.to(self.device)
             
             #####################################################################
@@ -251,7 +270,7 @@ class Trainer:
             loss_class = self.CELoss(out_cls,x_label)
             
             # Fake - WGAN Loss (Minimize (D(G(c)))
-            fake_x = self.G(cond)
+            fake_x = self.G(cond_D)
             fe_out2 = self.FE(fake_x.detach())
             out_fake, _ = self.D(fe_out2)
             loss_fake = torch.mean(out_fake)
@@ -274,33 +293,75 @@ class Trainer:
             #                   Train Generator                                 #
             #####################################################################                                
             
-            if (num_iters+1) % self.n_critic ==0:
+            if (num_iters+1) % self.n_critic==0:
                 self.optimG.zero_grad()
                 self.optimD.zero_grad()
+                con_c_all, q_mu_all, q_var_all = [], [], []
 
-                x_fake = self.G(cond)
-                fe_out = self.FE(fake_x)
-                out_fake, out_cls = self.D(fe_out)
+                for i, cond_l in enumerate(cond_G):
+                    fake_x = self.G(cond_l)
+                    fe_out = self.FE(fake_x)
+                    out_fake, out_cls = self.D(fe_out)
+                    
+                    # Fake - WGAN loss (Maximise D(G(c)))
+                    fake_loss = -torch.mean(out_fake)
                 
-                # Fake - WGAN loss (Maximise D(G(c)))
-                fake_loss = -torch.mean(out_fake)
+                    #Classification loss (Minimise CrossEntropy(y;D(L|G(c)))
+                    g_loss_cls = self.CELoss(out_cls, x_label)
+
+                    # Gaussian loss (Maximize Gaussian Likelihood)
+                    q_mu, q_var = self.Q(fe_out)
+                    q_mu_all.append(q_mu.unsqueeze(1))
+                    q_var_all.append(q_var.unsqueeze(1))
+                    con_c_all.append(cond_l[:,i].unsqueeze(1))
+                    # con_loss = self.GaussLoss_sum(cond, q_mu, q_var)
+                    G_loss = fake_loss + self.lambda_cls*g_loss_cls
+                    G_loss.backward(retain_graph=True)
+
                 
-                #Classification loss (Minimise CrossEntropy(y;D(L|G(c)))
-                g_loss_cls = self.CELoss(out_cls,x_label)
+                q_mu = torch.cat(q_mu_all, dim=1).to(self.device)
+                q_var = torch.cat(q_var_all, dim=1).to(self.device)
+                cond = torch.cat(con_c_all, dim=1).to(self.device)
+                con_loss = self.lambda_MI*self.GaussLoss_sum(cond, q_mu, q_var)
+                con_loss.backward()    
+                # prod_loss = self.logprod(con_c,q_mu,q_var)
 
-                # Gaussian loss (Maximize Gaussian Likelihood)
-                q_mu, q_var = self.Q(fe_out)
-                con_loss = self.GaussLoss(con_c, q_mu, q_var)
-                prod_loss = self.logprod(con_c,q_mu,q_var)
+                #De-Aligning Part
+                if self.dealign:
+                    con_c_all, q_mu_all, q_var_all = [], [], []
+                    for i, cond_G_i in enumerate(cond_G):
+                        for j, cond_G_j in enumerate(cond_G):
+                            if i!=j:
+                                #Generate fake image with j
+                                x_fake_j = self.G(cond_G_j)
+                        
+                                #Calculate params Q(c_i| X_hat (z,c_j))
+                                fe_out = self.FE(x_fake_j)
+                                q_mu_j, q_var_j = self.Q(fe_out)
 
-                G_loss = fake_loss + self.lambda_cls*g_loss_cls + self.lambda_MI*con_loss + prod_loss
-                G_loss.backward()
+                                q_mu_all.append(q_mu_j.unsqueeze(1))
+                                q_var_all.append(q_var_j.unsqueeze(1))
+                                con_c_all.append(cond_G_i[:,i].unsqueeze(1))
+                    
+                    q_mu = torch.cat(q_mu_all, dim=1).to(self.device)
+                    q_var = torch.cat(q_var_all, dim=1).to(self.device)
+                    cond = torch.cat(con_c_all, dim=1).to(self.device)
+                    
+                    loss_dealign = self.GaussLoss_sum(cond, q_mu, q_var)
+                    loss_dealign.backward()
+
+                # G_loss = fake_loss + self.lambda_cls*g_loss_cls + self.lambda_MI*prod_loss
+                # G_loss.backward()
                 self.optimG.step()
 
                 loss_['G/Fake'] = fake_loss.item()
                 loss_['G/Classification'] = g_loss_cls.item()
                 loss_['G/Gauss'] = con_loss.item()
-
+                # loss_['G/Prod Loss'] = prod_loss.item()
+            #####################################################################
+            #                   Miscellaneous                                   #
+            #####################################################################                                
+           
             if (num_iters+1) % self.log_step ==0:
                 log = 'Epoch-{0} - Iter-{1}; '.format(epoch+1,num_iters+1)
                 for loss_type, value in loss_.items():
@@ -318,7 +379,7 @@ class Trainer:
                 
                 self.G.train()
 
-            if (num_iters+1) % self.model_save_step==0:
+            if (epoch*len(dataloader)//self.batch_size+num_iters+1) % self.model_save_step==0:
                 self.save_models(epoch+1, num_iters+1)
 
             if (epoch*len(dataloader)//self.batch_size+num_iters+1) % 10000 == 0:
@@ -326,3 +387,74 @@ class Trainer:
                 d_lr -= (self.d_lr/10000.0)
                 self.update_lr(g_lr, d_lr) 
 
+    def metric(self):
+        dataloader = get_loader('train',self.image_size,
+                                self.batch_size,self.image_dir,
+                                self.num_workers,self.dataset,
+                                self.crop_size)
+        self.G.eval()
+        self.Q.eval()
+        self.FE.eval()
+        self.Q.eval()
+        N = len(dataloader.dataset)
+        qz_mu = torch.Tensor(N, self.num_c).to(self.device)
+        qz_var = torch.Tensor(N, self.num_c).to(self.device)
+        print("Dataset size- ", N)
+        
+        for i, xs in enumerate(dataloader):
+            x, x_label = xs
+            bs = x.size(0)
+            x = x.to(self.device)
+            mu, var = self.Q(self.FE(x))
+            qz_mu[i*bs:(i+1)*bs] = mu
+            qz_var[i*bs:(i+1)*bs] = var.log()
+        
+        c0 = 30
+        c1 = 20
+        p = 100    
+        qz_samples = sample_normal(qz_mu.view(p, c0, c1, self.num_c), 
+                                   qz_var.view(p, c0, c1, self.num_c),
+                                   self.device)
+        print("Estimating marginal entropies")
+
+        marginal_entr = estimate_entropies(qz_samples.view(N, self.num_c).transpose(0,1), 
+                                           qz_mu.view(N, self.num_c),
+                                           qz_var.view(N, self.num_c),
+                                           self.device)
+        marginal_entr = marginal_entr.cpu()
+        print("Marginal entropy: ", marginal_entr)
+
+        print("Estimating conditional entropy for c0..")
+        conditional_entr = torch.zeros(2, self.num_c)
+        qz_mu = qz_mu.view(p, c0, c1, self.num_c)
+        qz_var = qz_var.view(p, c0, c1, self.num_c)
+
+        for i in range(c0):
+            qz_samples_c0 = qz_samples[:, i, :, :].contiguous()
+            qz_mu_c0 = qz_mu[:, i, :, :].contiguous()
+            qz_var_c0 = qz_var[:, i, :, :].contiguous()
+            conditional_entr_0 = estimate_entropies(qz_samples_c0.view(N//c0, self.num_c).transpose(0,1),
+                                                    qz_mu_c0.view(N//c0,self.num_c),
+                                                    qz_var_c0.view(N//c0,self.num_c),
+                                                    self.device)
+            conditional_entr[0] += conditional_entr_0.cpu()/c0
+
+        print("Conditional Entropy for c0: ", conditional_entr_0.cpu()/c0)
+        
+        print("Estimating conditional entropy for c1..")
+        for i in range(c1):
+            qz_samples_c1 = qz_samples[:, :, i, :].contiguous()
+            qz_mu_c1 = qz_mu[:, :, i, :].contiguous()
+            qz_var_c1 = qz_var[:, :, i, :].contiguous()
+            conditional_entr_1 = estimate_entropies(qz_samples_c1.view(N//c1, self.num_c).transpose(0,1),
+                                                    qz_mu_c1.view(N//c1,self.num_c),
+                                                    qz_var_c1.view(N//c1,self.num_c),
+                                                    self.device)
+            conditional_entr[1] += conditional_entr_1.cpu()/c1
+        print("Conditional Entropy for c1: ", conditional_entr_1.cpu()/c1)
+
+        mutual_info = marginal_entr[None] - conditional_entr
+        mutual_info = torch.sort(mutual_info,dim=1, descending=True)[0].clamp_(min=0)
+        mi_normed = mutual_info/torch.Tensor([c0,c1]).log()[:,None]
+        metric = torch.mean(mi_normed[:,0] - mi_normed[:,1])
+        return metric

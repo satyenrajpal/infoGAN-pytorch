@@ -3,25 +3,25 @@ import torch
 import os
 import argparse
 import torch
-
+import sys
 
 def str2bool(v):
     return v.lower() in ('true')
 
 def main(config):
 
+    torch.manual_seed(1234)
+    config.sample_save_dir = os.path.join(config.save_dir, 'samples')
+    if not os.path.exists(config.sample_save_dir):
+        os.makedirs(config.sample_save_dir)
+    
+    config.model_save_dir = os.path.join(config.save_dir, 'models')
+    if not os.path.exists(config.model_save_dir):
+        os.makedirs(config.model_save_dir)
+    
+    trainer = Trainer(config)
+    
     if config.mode == 'train':
-        torch.manual_seed(1234)
-
-        config.sample_save_dir = os.path.join(config.save_dir, 'samples')
-        if not os.path.exists(config.sample_save_dir):
-            os.makedirs(config.sample_save_dir)
-        
-        config.model_save_dir = os.path.join(config.save_dir, 'models')
-        if not os.path.exists(config.model_save_dir):
-            os.makedirs(config.model_save_dir)
-        
-        trainer = Trainer(config)
         
         if config.restore_dir!='':
             trainer.restore_models(config.restore_dir,config.resume_epoch,config.resume_iter)
@@ -32,7 +32,14 @@ def main(config):
         
         print("Training...")
         trainer.train()
+    elif config.mode == 'metric':
 
+        if config.restore_dir=='':
+            sys.exit("No restore dir")
+        else:
+            trainer.restore_models(config.restore_dir,config.resume_epoch,config.resume_iter)
+        score = trainer.metric()
+        print("Final Score:", score)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -62,13 +69,15 @@ if __name__ == '__main__':
     parser.add_argument('--resume_iter', type=int,default=0)
     parser.add_argument('--resume_epoch', type=int,default=0)
     parser.add_argument('--lRelu_slope', type=float,default=0.1)
-    parser.add_argument('--res', action='store_true', default=False, help='Use residual layers is Generator?')
+    parser.add_argument('--res', action='store_true', default=False, help='Use residual layers in Generator?')
+    parser.add_argument('--dealign', action='store_true', default=False, help='Use dealign loss')
+        
     # Test configuration.
     parser.add_argument('--test_iters', type=int, default=200000, help='test model from this step')
 
     # Miscellaneous.
     parser.add_argument('--num_workers', type=int, default=4)
-    parser.add_argument('--mode', type=str, default='train', choices=['train', 'test','calc_score'])
+    parser.add_argument('--mode', type=str, default='train', choices=['train', 'test','metric'])
     parser.add_argument('--use_tensorboard', type=str2bool, default=True)
     parser.add_argument('--pre_rafd', action='store_true', help='Preprocess RafD?')
 

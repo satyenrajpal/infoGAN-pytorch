@@ -52,8 +52,7 @@ def get_loader(mode,image_size,batch_size,image_dir,num_workers,dataset,crop_siz
         transform_op.append(T.CenterCrop(crop_size))
     transform_op.append(T.Resize((image_size,image_size)))
     transform_op.append(T.ToTensor())
-    if dataset!='MNIST':
-        transform_op.append(T.Normalize(mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5)))
+    transform_op.append(T.Normalize(mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5)))
     # elif dataset=='MNIST':
     #     transform_op.append(T.Normalize(mean=[0.5], std=[0.5]))
     transform_op = T.Compose(transform_op)
